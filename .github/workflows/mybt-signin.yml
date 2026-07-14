@@ -15,7 +15,6 @@ jobs:
           python-version: "3.12"
       - name: Run signin
         env:
-          MYBT_TOKEN: ${{ secrets.MYBT_TOKEN }}
-          MYBT_USER_ID: ${{ secrets.MYBT_USER_ID }}
-          MYBT_COOKIE: ${{ secrets.MYBT_COOKIE }}
+          MYBT_USERNAME: ${{ secrets.MYBT_USERNAME }}
+          MYBT_PASSWORD: ${{ secrets.MYBT_PASSWORD }}
         run: python signin.py
