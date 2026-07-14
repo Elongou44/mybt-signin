@@ -9,3 +9,8 @@ venv/
 .DS_Store
 Thumbs.db
 .idea/
+.vscode/
+*.har
+*.json.bak
+cookies.txt
+token.txt
