@@ -1,0 +1,21 @@
+name: mybt-signin
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 1 * * *"
+
+jobs:
+  signin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run signin
+        env:
+          MYBT_TOKEN: ${{ secrets.MYBT_TOKEN }}
+          MYBT_USER_ID: ${{ secrets.MYBT_USER_ID }}
+          MYBT_COOKIE: ${{ secrets.MYBT_COOKIE }}
+        run: python signin.py
