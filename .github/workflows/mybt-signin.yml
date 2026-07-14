@@ -7,7 +7,7 @@ on:
   push:
     branches: [master, main]
     paths:
-      - ".github/workflows/signin.yml"
+      - "mybt-signin.yml"
       - "signin.py"
 
 permissions:
