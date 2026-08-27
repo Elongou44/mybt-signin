@@ -16,16 +16,27 @@ def log(msg):
 def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def signing_key(secret: str, user_id: str) -> str:
-    return hmac.new(secret.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256).hexdigest()
+def sort_query(query: str) -> str:
+    """Sort query params by key, mirroring the frontend signing helper."""
+    if not query: return ""
+    keys, values = [], {}
+    for kv in query.split("&"):
+        if "=" in kv:
+            k, v = kv.split("=", 1)
+        else:
+            k, v = kv, None
+        if k not in values: keys.append(k)
+        values[k] = v
+    keys.sort()
+    return "&".join(k if values[k] is None else f"{k}={values[k]}" for k in keys)
 
-def build_sign_headers(method, api_path, body, user_id, secret):
+def build_sign_headers(method, api_path, body, secret):
     path, query = api_path, ""
     if "?" in api_path: path, query = api_path.split("?", 1)
+    query = sort_query(query)
     ts = str(int(time.time())); body = body or ""
     canonical = f"{method.upper()}\n{path}\n{query}\n{sha256_hex(body)}\n{ts}"
-    key = signing_key(secret, user_id)
-    sign = hmac.new(key.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+    sign = hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
     return {"X-Sign": sign, "X-Timestamp": ts}
 
 class HttpSession:
@@ -140,15 +151,17 @@ class CasdoorLogin:
 class MybtClient:
     def __init__(self, base_url, token, user_id, secret="change-this-secret", cookie=""):
         self.base_url=base_url.rstrip("/"); self.token=token.removeprefix("Bearer ").strip()
-        self.user_id=user_id; self.secret=secret; self.cookie=cookie
+        self.user_id=user_id; self.secret=secret or "change-this-secret"; self.cookie=cookie
         self.ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+    def set_sign_secret(self, secret):
+        if secret: self.secret=secret
     def request(self, method, path, body_obj=None):
         rel=path if path.startswith("/") else f"/{path}"
         if not rel.startswith("/api/"): rel="/api"+rel
         body=None if body_obj is None else json.dumps(body_obj, ensure_ascii=False, separators=(",", ":"))
         headers={"User-Agent":self.ua,"Accept":"application/json, */*","Content-Type":"application/json","Authorization":f"Bearer {self.token}","Origin":self.base_url,"Referer":self.base_url+"/"}
         if self.cookie: headers["Cookie"]=self.cookie
-        headers.update(build_sign_headers(method, rel, body or "", self.user_id, self.secret))
+        headers.update(build_sign_headers(method, rel, body or "", self.secret))
         data=None if body is None else body.encode("utf-8")
         req=urllib.request.Request(self.base_url+rel, data=data, headers=headers, method=method.upper())
         try:
@@ -215,9 +228,12 @@ def main():
     status, data, raw = client.me(); ok, msg = summarize("me", status, data, raw); log(msg)
     if not ok:
         log("登录态失效。请检查自动登录账号密码/验证码，或更新 MYBT_TOKEN"); return 1
-    if isinstance(data, dict) and isinstance(data.get("user"), dict):
-        user=data["user"]; log(f"user: {user.get('username')} points={user.get('points')}")
-        if user.get("id"): client.user_id=str(user.get("id"))
+    if isinstance(data, dict):
+        if data.get("sign_secret"):
+            client.set_sign_secret(data["sign_secret"])
+        if isinstance(data.get("user"), dict):
+            user=data["user"]; log(f"user: {user.get('username')} points={user.get('points')}")
+            if user.get("id"): client.user_id=str(user.get("id"))
     status, data, raw = client.signin(); ok, msg = summarize("signin", status, data, raw); log(msg); ok_all = ok_all and ok
     if do_visit:
         status, data, raw = client.visit(); ok, msg = summarize("visit", status, data, raw); log(msg); ok_all = ok_all and ok
