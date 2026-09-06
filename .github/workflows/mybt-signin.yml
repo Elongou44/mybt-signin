@@ -21,4 +21,6 @@ jobs:
           MYBT_USERNAME: ${{ secrets.MYBT_USERNAME }}
           MYBT_PASSWORD: ${{ secrets.MYBT_PASSWORD }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          WXPUSHER_APP_TOKEN: ${{ secrets.WXPUSHER_APP_TOKEN }}
+          WXPUSHER_UID: ${{ secrets.WXPUSHER_UID }}
         run: python signin.py

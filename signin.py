@@ -14,12 +14,26 @@ def log(msg):
     print(msg, flush=True)
 
 def pushplus_notify(ok, content):
-    """Send signin result to PushPlus (WeChat). Skipped when PUSHPLUS_TOKEN is unset."""
+    """Send signin result to WeChat via WxPusher (preferred) or PushPlus (fallback). Skipped when neither is configured."""
+    title = "mybt 签到成功" if ok else "mybt 签到失败"
+    sent = False
+    app_token, uid = env("WXPUSHER_APP_TOKEN", ""), env("WXPUSHER_UID", "")
+    if app_token and uid:
+        try:
+            body = json.dumps({"appToken": app_token, "content": title + "\n" + content, "summary": title, "contentType": 1, "uids": [uid]}).encode("utf-8")
+            req = urllib.request.Request("https://wxpusher.zjiecode.com/api/send/message", data=body, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+            if isinstance(result, dict) and result.get("code") == 1000:
+                log("✅ WxPusher 通知已发送"); sent = True
+            else:
+                log(f"❌ WxPusher 推送失败: {result}")
+        except Exception as e:
+            log(f"❌ WxPusher 推送异常: {e}")
     token = env("PUSHPLUS_TOKEN", "")
     if not token:
-        log("PUSHPLUS_TOKEN 未设置，跳过通知")
+        if not sent: log("未配置 WxPusher/PushPlus，跳过通知")
         return
-    title = "mybt 签到成功" if ok else "mybt 签到失败"
     try:
         body = json.dumps({"token": token, "title": title, "content": content, "template": "txt"}).encode("utf-8")
         req = urllib.request.Request("https://www.pushplus.plus/send", data=body, headers={"Content-Type": "application/json"})
