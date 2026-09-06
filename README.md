@@ -17,6 +17,7 @@
 | 签到 | `POST /api/auth/points/tasks/signin` |
 | 访问任务 | `POST /api/auth/points/tasks/visit` |
 | 签名请求 | 自动生成 `X-Sign` / `X-Timestamp` |
+| 结果通知 | 签到结果推送到 WxPusher / PushPlus / 微信测试号（配置了才启用） |
 
 ## 快速开始（GitHub Actions）
 
@@ -41,6 +42,28 @@
 | `MYBT_USER_ID` | 用户 id（一般可自动解析） |
 | `MYBT_COOKIE` | 如 `cf_clearance=...` |
 | `MYBT_TURNSTILE_TOKEN` | 若触发人机验证时可手动提供 |
+
+可选（通知渠道，配置了才启用）：
+
+| Name | 说明 |
+|------|------|
+| `WXPUSHER_APP_TOKEN` | WxPusher AppToken（AT_ 开头），推荐，免实名免费 |
+| `WXPUSHER_UID` | WxPusher 用户 UID（UID_ 开头） |
+| `PUSHPLUS_TOKEN` | PushPlus token，需实名认证后方可发送 |
+| `WX_TEST_APPID` / `WX_TEST_APP_SECRET` / `WX_TEST_TEMPLATE_ID` / `WX_TEST_OPENID` | 微信公众平台测试号模板消息 |
+
+### 结果通知
+
+脚本结束后会推送签到结果（成功/失败、积分变化）。通知按以下优先级依次尝试，命中第一个可用渠道即停止：
+
+1. **微信测试号**（配置 4 个 `WX_TEST_*` secrets 时启用）：消息在微信「服务通知」中，标题固定，详情需点开查看
+2. **WxPusher**（推荐）：免费、免实名，消息内容在 WxPusher App 内直接可见。配置步骤：
+   1. 登录 [wxpusher.zjiecode.com](https://wxpusher.zjiecode.com) → 应用管理 → 创建应用，复制 `APP_TOKEN`
+   2. 在 WxPusher App 中关注该应用
+   3. 配置 secrets：`WXPUSHER_APP_TOKEN` 与 `WXPUSHER_UID`（UID 可通过接口 `GET /api/fun/wxuser?appToken=AT_xxx` 查询）
+3. **PushPlus**：需在 [verify.pushplus.plus](https://verify.pushplus.plus) 完成实名认证，否则返回 code 905
+
+都不配置时跳过通知，不影响签到本身。
 
 ### 3. 启用 Actions
 
