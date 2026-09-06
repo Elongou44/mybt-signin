@@ -13,6 +13,36 @@ def env(name, default=None):
 def log(msg):
     print(msg, flush=True)
 
+def wx_test_notify(ok, content):
+    """Send signin result via WeChat sandbox test account (mp.weixin.qq.com). Returns True when sent."""
+    appid, secret = env("WX_TEST_APPID", ""), env("WX_TEST_APP_SECRET", "")
+    template_id, openid = env("WX_TEST_TEMPLATE_ID", ""), env("WX_TEST_OPENID", "")
+    if not (appid and secret and template_id and openid): return False
+    try:
+        q = urllib.parse.urlencode({"grant_type": "client_credential", "appid": appid, "secret": secret})
+        with urllib.request.urlopen(f"https://api.weixin.qq.com/cgi-bin/token?{q}", timeout=15) as resp:
+            tok = json.loads(resp.read().decode("utf-8"))
+        access_token = tok.get("access_token")
+        if not access_token:
+            log(f"❌ 微信测试号获取 access_token 失败: {tok}"); return False
+        body = json.dumps({"touser": openid, "template_id": template_id,
+                           "data": {"result": {"value": "mybt 签到成功" if ok else "mybt 签到失败"},
+                                    "detail": {"value": content[:200]}}}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(f"https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={access_token}",
+                                     data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        if isinstance(result, dict) and result.get("errcode") == 0:
+            log("✅ 微信测试号通知已发送"); return True
+        log(f"❌ 微信测试号推送失败: {result}"); return False
+    except Exception as e:
+        log(f"❌ 微信测试号推送异常: {e}"); return False
+
+def notify(ok, content):
+    """Notification chain: WeChat test account -> WxPusher -> PushPlus."""
+    if wx_test_notify(ok, content): return
+    pushplus_notify(ok, content)
+
 def pushplus_notify(ok, content):
     """Send signin result to WeChat via WxPusher (preferred) or PushPlus (fallback). Skipped when neither is configured."""
     title = "mybt 签到成功" if ok else "mybt 签到失败"
@@ -244,10 +274,10 @@ def main():
         except Exception as e:
             log(f"❌ 自动登录失败: {e}")
             if not token:
-                log("无可用 MYBT_TOKEN 兜底，退出"); pushplus_notify(False, "自动登录失败且无 MYBT_TOKEN 兜底: " + str(e)); return 2
+                log("无可用 MYBT_TOKEN 兜底，退出"); notify(False, "自动登录失败且无 MYBT_TOKEN 兜底: " + str(e)); return 2
             log("回退到已有 MYBT_TOKEN")
     elif not token:
-        log("缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); pushplus_notify(False, "缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); return 2
+        log("缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); notify(False, "缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); return 2
     if not user_id:
         try:
             payload=token.split(".")[1]; pad="=" * (-len(payload)%4)
@@ -255,12 +285,12 @@ def main():
             user_id=str(data.get("uid") or data.get("id") or "")
         except Exception: pass
     if not user_id:
-        log("缺少 MYBT_USER_ID，且无法从 token 解析"); pushplus_notify(False, "缺少 MYBT_USER_ID，且无法从 token 解析"); return 2
+        log("缺少 MYBT_USER_ID，且无法从 token 解析"); notify(False, "缺少 MYBT_USER_ID，且无法从 token 解析"); return 2
     client=MybtClient(base_url, token, user_id, secret=secret, cookie=cookie)
     ok_all=True; msgs=[]
     status, data, raw = client.me(); ok, msg = summarize("me", status, data, raw); log(msg); msgs.append(msg)
     if not ok:
-        log("登录态失效。请检查自动登录账号密码/验证码，或更新 MYBT_TOKEN"); pushplus_notify(False, "\n".join(msgs)); return 1
+        log("登录态失效。请检查自动登录账号密码/验证码，或更新 MYBT_TOKEN"); notify(False, "\n".join(msgs)); return 1
     if isinstance(data, dict):
         if data.get("sign_secret"):
             client.set_sign_secret(data["sign_secret"])
@@ -273,8 +303,8 @@ def main():
     status, data, raw = client.me()
     if status==200 and isinstance(data, dict) and isinstance(data.get("user"), dict):
         log(f"points_after: {data['user'].get('points')}"); msgs.append(f"签到后积分: {data['user'].get('points')}")
-    if ok_all: log("DONE: success"); pushplus_notify(True, "\n".join(msgs)); return 0
-    log("DONE: failed"); pushplus_notify(False, "\n".join(msgs)); return 1
+    if ok_all: log("DONE: success"); notify(True, "\n".join(msgs)); return 0
+    log("DONE: failed"); notify(False, "\n".join(msgs)); return 1
 
 if __name__ == "__main__":
     try: raise SystemExit(main())
