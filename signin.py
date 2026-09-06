@@ -13,6 +13,25 @@ def env(name, default=None):
 def log(msg):
     print(msg, flush=True)
 
+def pushplus_notify(ok, content):
+    """Send signin result to PushPlus (WeChat). Skipped when PUSHPLUS_TOKEN is unset."""
+    token = env("PUSHPLUS_TOKEN", "")
+    if not token:
+        log("PUSHPLUS_TOKEN 未设置，跳过通知")
+        return
+    title = "mybt 签到成功" if ok else "mybt 签到失败"
+    try:
+        body = json.dumps({"token": token, "title": title, "content": content, "template": "txt"}).encode("utf-8")
+        req = urllib.request.Request("https://www.pushplus.plus/send", data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+        if isinstance(result, dict) and result.get("code") == 200:
+            log("✅ PushPlus 通知已发送")
+        else:
+            log(f"❌ PushPlus 推送失败: {result}")
+    except Exception as e:
+        log(f"❌ PushPlus 推送异常: {e}")
+
 def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -211,10 +230,10 @@ def main():
         except Exception as e:
             log(f"❌ 自动登录失败: {e}")
             if not token:
-                log("无可用 MYBT_TOKEN 兜底，退出"); return 2
+                log("无可用 MYBT_TOKEN 兜底，退出"); pushplus_notify(False, "自动登录失败且无 MYBT_TOKEN 兜底: " + str(e)); return 2
             log("回退到已有 MYBT_TOKEN")
     elif not token:
-        log("缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); return 2
+        log("缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); pushplus_notify(False, "缺少 MYBT_USERNAME/MYBT_PASSWORD 或 MYBT_TOKEN"); return 2
     if not user_id:
         try:
             payload=token.split(".")[1]; pad="=" * (-len(payload)%4)
@@ -222,26 +241,26 @@ def main():
             user_id=str(data.get("uid") or data.get("id") or "")
         except Exception: pass
     if not user_id:
-        log("缺少 MYBT_USER_ID，且无法从 token 解析"); return 2
+        log("缺少 MYBT_USER_ID，且无法从 token 解析"); pushplus_notify(False, "缺少 MYBT_USER_ID，且无法从 token 解析"); return 2
     client=MybtClient(base_url, token, user_id, secret=secret, cookie=cookie)
-    ok_all=True
-    status, data, raw = client.me(); ok, msg = summarize("me", status, data, raw); log(msg)
+    ok_all=True; msgs=[]
+    status, data, raw = client.me(); ok, msg = summarize("me", status, data, raw); log(msg); msgs.append(msg)
     if not ok:
-        log("登录态失效。请检查自动登录账号密码/验证码，或更新 MYBT_TOKEN"); return 1
+        log("登录态失效。请检查自动登录账号密码/验证码，或更新 MYBT_TOKEN"); pushplus_notify(False, "\n".join(msgs)); return 1
     if isinstance(data, dict):
         if data.get("sign_secret"):
             client.set_sign_secret(data["sign_secret"])
         if isinstance(data.get("user"), dict):
-            user=data["user"]; log(f"user: {user.get('username')} points={user.get('points')}")
+            user=data["user"]; log(f"user: {user.get('username')} points={user.get('points')}"); msgs.append(f"用户: {user.get('username')} 当前积分: {user.get('points')}")
             if user.get("id"): client.user_id=str(user.get("id"))
-    status, data, raw = client.signin(); ok, msg = summarize("signin", status, data, raw); log(msg); ok_all = ok_all and ok
+    status, data, raw = client.signin(); ok, msg = summarize("signin", status, data, raw); log(msg); ok_all = ok_all and ok; msgs.append(msg)
     if do_visit:
-        status, data, raw = client.visit(); ok, msg = summarize("visit", status, data, raw); log(msg); ok_all = ok_all and ok
+        status, data, raw = client.visit(); ok, msg = summarize("visit", status, data, raw); log(msg); ok_all = ok_all and ok; msgs.append(msg)
     status, data, raw = client.me()
     if status==200 and isinstance(data, dict) and isinstance(data.get("user"), dict):
-        log(f"points_after: {data['user'].get('points')}")
-    if ok_all: log("DONE: success"); return 0
-    log("DONE: failed"); return 1
+        log(f"points_after: {data['user'].get('points')}"); msgs.append(f"签到后积分: {data['user'].get('points')}")
+    if ok_all: log("DONE: success"); pushplus_notify(True, "\n".join(msgs)); return 0
+    log("DONE: failed"); pushplus_notify(False, "\n".join(msgs)); return 1
 
 if __name__ == "__main__":
     try: raise SystemExit(main())

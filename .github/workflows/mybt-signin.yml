@@ -20,4 +20,5 @@ jobs:
         env:
           MYBT_USERNAME: ${{ secrets.MYBT_USERNAME }}
           MYBT_PASSWORD: ${{ secrets.MYBT_PASSWORD }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: python signin.py
